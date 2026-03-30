@@ -24,13 +24,13 @@ runs:
         RAW_SSH_KEY: ${{ inputs.ec2-key }}
       run: |
         # Write the env variable to a file
-        echo "$RAW_SSH_KEY" > react-app-key.pem
+        echo "$RAW_SSH_KEY" > mvn-key.pem
         
         # Standardize line endings and add a trailing newline
-        sed -i 's/\r$//' react-app-key.pem
-        echo "" >> react-app-key.pem
+        sed -i 's/\r$//' mvn-key.pem
+        echo "" >> mvn-key.pem
         
-        chmod 600 react-app-key.pem
+        chmod 600 mvn-key.pem
 
     - name: Copy JAR to EC2
       shell: bash
@@ -46,7 +46,7 @@ runs:
       run: |
         ssh -o StrictHostKeyChecking=no \
             -o IdentitiesOnly=yes \
-            -i react-app-key.pem \
+            -i mvn.pem \
             ${{ inputs.ec2-user }}@${{ inputs.ec2-host }} "
           sudo pkill -f app.jar || true
           nohup java -jar /home/${{ inputs.ec2-user }}/app.jar > /home/${{ inputs.ec2-user }}/app.log 2>&1 &
