@@ -1,58 +1,42 @@
-name: "Spring Boot Deploy"
-description: "Build and deploy Spring Boot app to EC2 via SSH"
+name: Spring Boot CI/CD (EC2 Deploy)
 
-inputs:
-  ec2-host:
-    required: true
-  ec2-user:
-    required: true
-    default: "ubuntu"
-  ec2-key:
-    required: true
+on:
+  push:
+    branches:
+      - main
 
-runs:
-  using: "composite"
-  steps:
-    - name: Build App
-      run: mvn clean package -DskipTests
-      shell: bash
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
 
-    - name: Setup SSH Key
-      shell: bash
-      env:
-        # We map the input to an env variable to preserve formatting
-        RAW_SSH_KEY: ${{ inputs.ec2-key }}
-      run: |
-        # Write the env variable to a file
-        echo "$RAW_SSH_KEY" > mvn-key.pem
-        
-        # Standardize line endings and add a trailing newline
-        sed -i 's/\r$//' mvn-key.pem
-        echo "" >> mvn-key.pem
-        
-        chmod 600 mvn-key.pem
+    steps:
+      # 1. Checkout code
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
-    - name: Copy JAR to EC2
-      shell: bash
-      run: |
-        # Using -o IdentitiesOnly ensures SSH doesn't try 'runner' keys
-        scp -o StrictHostKeyChecking=no \
-            -o IdentitiesOnly=yes \
-            -i react-app-key.pem \
-            target/*.jar ${{ inputs.ec2-user }}@${{ inputs.ec2-host }}:/home/${{ inputs.ec2-user }}/app.jar
+      # 2. Setup Java
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
-    - name: Run App on EC2
-      shell: bash
-      run: |
-        ssh -o StrictHostKeyChecking=no \
-            -o IdentitiesOnly=yes \
-            -i mvn.pem \
-            ${{ inputs.ec2-user }}@${{ inputs.ec2-host }} "
-          sudo pkill -f app.jar || true
-          nohup java -jar /home/${{ inputs.ec2-user }}/app.jar > /home/${{ inputs.ec2-user }}/app.log 2>&1 &
-        "
+      # 3. Build application
+      - name: Build Application
+        run: mvn clean package
 
-    - name: Cleanup
-      if: always()
-      run: rm -f react-app-key.pem
-      shell: bash
+      # 4. Deploy to EC2
+      - name: Deploy to EC2
+        run: |
+          # Create SSH key file
+          echo "${{ secrets.EC2_KEY }}" > key.pem
+          chmod 600 key.pem
+
+          # Copy JAR to EC2
+          scp -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i key.pem target/*.jar ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/app.jar
+
+          # SSH and restart app
+          ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i key.pem ubuntu@${{ secrets.EC2_HOST }} "
+            pkill -f app.jar || true
+            nohup java -jar /home/ubuntu/app.jar > app.log 2>&1 &
+          "
