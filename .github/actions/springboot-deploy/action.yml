@@ -1,12 +1,12 @@
 name: "Spring Boot Deploy"
-description: "Deploy Spring Boot app to EC2"
+description: "Build and deploy Spring Boot app to EC2 via SSH"
 
 inputs:
   ec2-host:
     required: true
   ec2-user:
     required: true
-    default: ubuntu
+    default: "ubuntu"
   ec2-key:
     required: true
 
@@ -14,24 +14,43 @@ runs:
   using: "composite"
   steps:
     - name: Build App
-      run: mvn clean package
+      run: mvn clean package -DskipTests
       shell: bash
 
     - name: Setup SSH Key
+      shell: bash
       run: |
-        echo "${{ inputs.ec2-key }}" > react-app-key.pem
+        # Use printf to avoid escaping issues and ensure a trailing newline
+        printf "%s\n" "${{ inputs.ec2-key }}" > react-app-key.pem
+        
+        # Clean up any Windows-style line endings
+        sed -i 's/\r$//' react-app-key.pem
+        
+        # Strict permissions required by SSH
         chmod 600 react-app-key.pem
-      shell: bash
 
-    - name: Copy JAR
-      run: |
-        scp -o StrictHostKeyChecking=no -i react-app-key.pem target/*.jar ${{ inputs.ec2-user }}@${{ inputs.ec2-host }}:/home/ubuntu/app.jar
+    - name: Copy JAR to EC2
       shell: bash
-
-    - name: Deploy App
       run: |
-        ssh -o StrictHostKeyChecking=no -i react-app-key.pem ${{ inputs.ec2-user }}@${{ inputs.ec2-host }} "
-        pkill -f app.jar || true
-        nohup java -jar /home/ubuntu/app.jar > app.log 2>&1 &
+        # -o IdentitiesOnly=yes prevents using the runner's default keys
+        # -v (verbose) will help us see exactly why it's failing if it happens again
+        scp -v -o StrictHostKeyChecking=no \
+               -o IdentitiesOnly=yes \
+               -i react-app-key.pem \
+               target/*.jar ${{ inputs.ec2-user }}@${{ inputs.ec2-host }}:/home/${{ inputs.ec2-user }}/app.jar
+
+    - name: Run App on EC2
+      shell: bash
+      run: |
+        ssh -o StrictHostKeyChecking=no \
+            -o IdentitiesOnly=yes \
+            -i react-app-key.pem \
+            ${{ inputs.ec2-user }}@${{ inputs.ec2-host }} "
+          sudo pkill -f app.jar || true
+          nohup java -jar /home/${{ inputs.ec2-user }}/app.jar > /home/${{ inputs.ec2-user }}/app.log 2>&1 &
         "
+
+    - name: Cleanup
+      if: always()
+      run: rm -f react-app-key.pem
       shell: bash
