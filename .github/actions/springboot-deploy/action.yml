@@ -6,6 +6,7 @@ inputs:
     required: true
   ec2-user:
     required: true
+    default: "ubuntu"
   ec2-key:
     required: true
 
@@ -16,28 +17,32 @@ runs:
       run: mvn clean package -DskipTests
       shell: bash
 
-    - name: Prepare SSH Key
-      run: |
-        # Using a heredoc to preserve the exact formatting of the PEM key
-        cat <<EOF > react-app-key.pem
-        ${{ inputs.ec2-key }}
-        EOF
-        chmod 600 react-app-key.pem
+    - name: Deploy via SSH Agent
       shell: bash
-
-    - name: Copy JAR to EC2
+      env:
+        SSH_PRIVATE_KEY: ${{ inputs.ec2-key }}
+        REMOTE_HOST: ${{ inputs.ec2-host }}
+        REMOTE_USER: ${{ inputs.ec2-user }}
       run: |
-        scp -o StrictHostKeyChecking=no -i react-app-key.pem target/*.jar ${{ inputs.ec2-user }}@${{ inputs.ec2-host }}:/home/${{ inputs.ec2-user }}/app.jar
-      shell: bash
+        # 1. Start the ssh-agent
+        eval $(ssh-agent -s)
 
-    - name: Run App on EC2
-      run: |
-        ssh -o StrictHostKeyChecking=no -i react-app-key.pem ${{ inputs.ec2-user }}@${{ inputs.ec2-host }} "
-          pkill -f app.jar || true
-          nohup java -jar /home/${{ inputs.ec2-user }}/app.jar > app.log 2>&1 &
+        # 2. Add the key directly from the environment variable
+        # Use 'tr' to fix any potential Windows-style line endings (\r)
+        echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+
+        # 3. Create the .ssh directory if it doesn't exist
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+
+        # 4. Perform SCP (notice we no longer need -i because it's in the agent)
+        scp -o StrictHostKeyChecking=no target/*.jar ${REMOTE_USER}@${REMOTE_HOST}:/home/${REMOTE_USER}/app.jar
+
+        # 5. Perform SSH command
+        ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} "
+          sudo pkill -f app.jar || true
+          nohup java -jar /home/${REMOTE_USER}/app.jar > /home/${REMOTE_USER}/app.log 2>&1 &
         "
-      shell: bash
 
-    - name: Cleanup
-      run: rm -f react-app-key.pem
-      shell: bash
+        # 6. Kill the agent for security
+        ssh-agent -k
