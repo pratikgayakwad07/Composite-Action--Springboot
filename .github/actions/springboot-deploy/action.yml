@@ -22,7 +22,7 @@ runs:
         cat <<EOF > react-app-key.pem
         ${{ inputs.ec2-key }}
         EOF
-        chmod 777 react-app-key.pem
+        chmod 400 react-app-key.pem
       shell: bash
 
     - name: Copy JAR to EC2
