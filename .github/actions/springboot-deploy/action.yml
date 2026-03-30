@@ -6,6 +6,7 @@ inputs:
     required: true
   ec2-user:
     required: true
+    default: ubuntu
   ec2-key:
     required: true
 
