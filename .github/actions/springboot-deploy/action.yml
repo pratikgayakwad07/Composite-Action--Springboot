@@ -20,24 +20,18 @@ runs:
     - name: Setup SSH Key
       shell: bash
       run: |
-        # Use printf to avoid escaping issues and ensure a trailing newline
-        printf "%s\n" "${{ inputs.ec2-key }}" > react-app-key.pem
-        
-        # Clean up any Windows-style line endings
-        sed -i 's/\r$//' react-app-key.pem
-        
-        # Strict permissions required by SSH
+        # Decode the Base64 key back into a real PEM file
+        echo "${{ inputs.ec2-key }}" | base64 -d > react-app-key.pem
         chmod 600 react-app-key.pem
 
     - name: Copy JAR to EC2
       shell: bash
       run: |
-        # -o IdentitiesOnly=yes prevents using the runner's default keys
-        # -v (verbose) will help us see exactly why it's failing if it happens again
-        scp -v -o StrictHostKeyChecking=no \
-               -o IdentitiesOnly=yes \
-               -i react-app-key.pem \
-               target/*.jar ${{ inputs.ec2-user }}@${{ inputs.ec2-host }}:/home/${{ inputs.ec2-user }}/app.jar
+        # Force the user and the key
+        scp -o StrictHostKeyChecking=no \
+            -o IdentitiesOnly=yes \
+            -i react-app-key.pem \
+            target/*.jar ${{ inputs.ec2-user }}@${{ inputs.ec2-host }}:/home/${{ inputs.ec2-user }}/app.jar
 
     - name: Run App on EC2
       shell: bash
