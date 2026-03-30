@@ -1,0 +1,32 @@
+name: "Spring Boot Deploy"
+description: "Build and deploy Spring Boot app to EC2 via SSH"
+
+inputs:
+  ec2-host:
+    required: true
+  ec2-user:
+    required: true
+  ec2-key:
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Build App
+      run: mvn clean package
+      shell: bash
+
+    - name: Copy JAR to EC2
+      run: |
+        echo "${{ inputs.ec2-key }}" > key.pem
+        chmod 400 key.pem
+        scp -o StrictHostKeyChecking=no -i key.pem target/*.jar ${{ inputs.ec2-user }}@${{ inputs.ec2-host }}:/home/ubuntu/app.jar
+      shell: bash
+
+    - name: Run App on EC2
+      run: |
+        ssh -o StrictHostKeyChecking=no -i key.pem ${{ inputs.ec2-user }}@${{ inputs.ec2-host }} "
+        pkill -f app.jar || true
+        nohup java -jar /home/ubuntu/app.jar > app.log 2>&1 &
+        "
+      shell: bash
