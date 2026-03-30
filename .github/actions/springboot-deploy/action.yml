@@ -21,20 +21,20 @@ runs:
     # 🔑 Setup SSH key
     - name: Setup SSH Key
       run: |
-        echo "${{ inputs.ec2-key }}" > key.pem
-        chmod 600 key.pem
+        echo "${{ inputs.ec2-key }}" > mvn-key.pem
+        chmod 600 mvn-key.pem
       shell: bash
 
     # 📦 Copy JAR
     - name: Copy JAR to EC2
       run: |
-        scp -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i key.pem target/*.jar ${{ inputs.ec2-user }}@${{ inputs.ec2-host }}:/home/ubuntu/app.jar
+        scp -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i mvn-key.pem target/*.jar ${{ inputs.ec2-user }}@${{ inputs.ec2-host }}:/home/ubuntu/app.jar
       shell: bash
 
     # 🚀 Deploy
     - name: Deploy App on EC2
       run: |
-        ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i key.pem ${{ inputs.ec2-user }}@${{ inputs.ec2-host }} "
+        ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i mvn-key.pem ${{ inputs.ec2-user }}@${{ inputs.ec2-host }} "
           pkill -f app.jar || true
           nohup java -jar /home/ubuntu/app.jar > app.log 2>&1 &
         "
