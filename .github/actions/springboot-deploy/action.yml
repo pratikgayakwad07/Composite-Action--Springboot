@@ -3,13 +3,10 @@ description: "Build and deploy Spring Boot app to EC2 via SSH"
 
 inputs:
   ec2-host:
-    description: "The public IP or DNS of the EC2 instance"
     required: true
   ec2-user:
-    description: "The SSH user (e.g., ubuntu or ec2-user)"
     required: true
   ec2-key:
-    description: "The private SSH key content"
     required: true
 
 runs:
@@ -19,10 +16,17 @@ runs:
       run: mvn clean package -DskipTests
       shell: bash
 
+    - name: Prepare SSH Key
+      run: |
+        # Using a heredoc to preserve the exact formatting of the PEM key
+        cat <<EOF > react-app-key.pem
+        ${{ inputs.ec2-key }}
+        EOF
+        chmod 600 react-app-key.pem
+      shell: bash
+
     - name: Copy JAR to EC2
       run: |
-        echo "${{ inputs.ec2-key }}" > react-app-key.pem
-        chmod 600 react-app-key.pem
         scp -o StrictHostKeyChecking=no -i react-app-key.pem target/*.jar ${{ inputs.ec2-user }}@${{ inputs.ec2-host }}:/home/${{ inputs.ec2-user }}/app.jar
       shell: bash
 
