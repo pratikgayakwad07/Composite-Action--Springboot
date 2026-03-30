@@ -1,42 +1,35 @@
-name: Spring Boot CI/CD (EC2 Deploy)
+name: "Spring Boot Deploy"
 
-on:
-  push:
-    branches:
-      - main
+inputs:
+  ec2-host:
+    required: true
+  ec2-user:
+    required: true
+  ec2-key:
+    required: true
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
+runs:
+  using: "composite"
+  steps:
+    - name: Build App
+      run: mvn clean package
+      shell: bash
 
-    steps:
-      # 1. Checkout code
-      - name: Checkout Code
-        uses: actions/checkout@v3
+    - name: Setup SSH Key
+      run: |
+        echo "${{ inputs.ec2-key }}" > mvn-key.pem
+        chmod 600 mvn-key.pem
+      shell: bash
 
-      # 2. Setup Java
-      - name: Setup Java
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'temurin'
-          java-version: '17'
+    - name: Copy JAR
+      run: |
+        scp -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i mvn-key.pem target/*.jar ${{ inputs.ec2-user }}@${{ inputs.ec2-host }}:/home/ubuntu/app.jar
+      shell: bash
 
-      # 3. Build application
-      - name: Build Application
-        run: mvn clean package
-
-      # 4. Deploy to EC2
-      - name: Deploy to EC2
-        run: |
-          # Create SSH key file
-          echo "${{ secrets.ec2_key }}" > mvn-key.pem
-          chmod 600 mvn-key.pem
-
-          # Copy JAR to EC2
-          scp -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i mvn-key.pem target/*.jar ubuntu@${{ secrets.ec2_host }}:/home/ubuntu/app.jar
-
-          # SSH and restart app
-          ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i mvn-key.pem ubuntu@${{ secrets.ec2_host }} "
-            pkill -f app.jar || true
-            nohup java -jar /home/ubuntu/app.jar > app.log 2>&1 &
-          "
+    - name: Deploy App
+      run: |
+        ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i mvn-key.pem ${{ inputs.ec2-user }}@${{ inputs.ec2-host }} "
+          pkill -f app.jar || true
+          nohup java -jar /home/ubuntu/app.jar > app.log 2>&1 &
+        "
+      shell: bash
