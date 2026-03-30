@@ -1,42 +1,36 @@
-name: Spring Boot CI/CD (EC2 Deploy)
+name: "Spring Boot Deploy"
+description: "Deploy Spring Boot app to EC2"
 
-on:
-  push:
-    branches:
-      - main
+inputs:
+  ec2-host:
+    required: true
+  ec2-user:
+    required: true
+  ec2-key:
+    required: true
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
+runs:
+  using: "composite"
+  steps:
+    - name: Build App
+      run: mvn clean package
+      shell: bash
 
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+    - name: Setup SSH Key
+      run: |
+        echo "${{ inputs.ec2-key }}" > react-app-key.pem
+        chmod 600 react-app-key.pem
+      shell: bash
 
-      - name: Setup Java
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'temurin'
-          java-version: '17'
+    - name: Copy JAR
+      run: |
+        scp -o StrictHostKeyChecking=no -i react-app-key.pem target/*.jar ${{ inputs.ec2-user }}@${{ inputs.ec2-host }}:/home/ubuntu/app.jar
+      shell: bash
 
-      - name: Build Application
-        run: mvn clean package
-
-      # 🔥 Setup SSH Key (Correct Way)
-      - name: Setup SSH Key
-        run: |
-          echo "${{ secrets.EC2_KEY }}" > react-aap-key.pem
-          chmod 700 react-aap-key.pem
-
-      # 🔥 Copy JAR to EC2
-      - name: Copy JAR to EC2
-        run: |
-          scp -o StrictHostKeyChecking=no -i react-aap-key.pem target/*.jar ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/ubuntu/app.jar
-
-      # 🔥 Deploy on EC2
-      - name: Deploy Application
-        run: |
-          ssh -o StrictHostKeyChecking=no -i key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "
-            pkill -f app.jar || true
-            nohup java -jar /home/ubuntu/app.jar > app.log 2>&1 &
-          "
+    - name: Deploy App
+      run: |
+        ssh -o StrictHostKeyChecking=no -i react-app-key.pem ${{ inputs.ec2-user }}@${{ inputs.ec2-host }} "
+        pkill -f app.jar || true
+        nohup java -jar /home/ubuntu/app.jar > app.log 2>&1 &
+        "
+      shell: bash
