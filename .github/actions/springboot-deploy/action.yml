@@ -29,14 +29,14 @@ jobs:
       - name: Deploy to EC2
         run: |
           # Create SSH key file
-          echo "${{ secrets.EC2_KEY }}" > key.pem
-          chmod 600 key.pem
+          echo "${{ secrets.EC2_KEY }}" > mvn-key.pem
+          chmod 600 mvn-key.pem
 
           # Copy JAR to EC2
-          scp -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i key.pem target/*.jar ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/app.jar
+          scp -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i mvn-key.pem target/*.jar ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/app.jar
 
           # SSH and restart app
-          ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i key.pem ubuntu@${{ secrets.EC2_HOST }} "
+          ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i mvn-key.pem ubuntu@${{ secrets.EC2_HOST }} "
             pkill -f app.jar || true
             nohup java -jar /home/ubuntu/app.jar > app.log 2>&1 &
           "
