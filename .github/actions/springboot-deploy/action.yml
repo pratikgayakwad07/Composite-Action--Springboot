@@ -1,0 +1,43 @@
+name: "Spring Boot Deploy"
+description: "Composite action to build and deploy"
+
+inputs:
+  host:
+    required: true
+  user:
+    required: true
+  key:
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Java
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Build
+      run: mvn clean package -DskipTests
+      shell: bash
+
+    - name: Copy JAR
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ inputs.host }}
+        username: ${{ inputs.user }}
+        key: ${{ inputs.key }}
+        source: "target/*.jar"
+        target: "/home/${{ inputs.user }}/app"
+        strip_components: 1
+
+    - name: Restart App
+      uses: appleboy/ssh-action@v0.1.10
+      with:
+        host: ${{ inputs.host }}
+        username: ${{ inputs.user }}
+        key: ${{ inputs.key }}
+        script: |
+          fuser -k 8080/tcp || true
+          nohup java -jar /home/${{ inputs.user }}/app/*.jar > app.log 2>&1 &
