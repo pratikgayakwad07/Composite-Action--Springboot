@@ -15,32 +15,40 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
+
     - name: Build with Maven
       run: mvn clean package -DskipTests
-      shell: bash
 
-    - name: Setup SSH Key
-      shell: bash
-      run: |
-        mkdir -p ~/.ssh
-        # Use a quoted Here-Doc to preserve the exact format of the key
-        cat <<'EOF' > ~/.ssh/id_rsa
-        ${{ inputs.ssh_key }}
-        EOF
-        
-        chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H ${{ inputs.host }} >> ~/.ssh/known_hosts
+    - name: Deploy to EC2 via SSH
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        source: "target/*.jar"
+        target: "/home/${{ secrets.EC2_USERNAME }}/app"
+        strip_components: 1
 
-    - name: Copy JAR to EC2
-      shell: bash
-      run: |
-        # Use -i to explicitly point to the created key
-        scp -v -i ~/.ssh/id_rsa target/*.jar ${{ inputs.user }}@${{ inputs.host }}:/home/${{ inputs.user }}/
-      
-    - name: Restart App on EC2
-      shell: bash
-      run: |
-        ssh -i ~/.ssh/id_rsa ${{ inputs.user }}@${{ inputs.host }} << 'EOF'
+    - name: Restart Application
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          # Kill the old process running on 8080
+          sudo fuser -k 8080/tcp || true
+          # Run the new JAR in the background
+          nohup java -jar /home/${{ secrets.EC2_USERNAME }}/app/*.jar > app.log 2>&1 &
           # Kill old process if it exists
           sudo fuser -k 8080/tcp || true
           cd /home/${{ inputs.user }}
