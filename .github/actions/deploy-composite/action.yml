@@ -1,57 +1,48 @@
-name: "Deploy Spring Boot to EC2"
-description: "Build and deploy Spring Boot app to AWS EC2"
+name: "Maven Build and EC2 Deploy"
+description: "Builds Spring Boot JAR and deploys to EC2 via native SSH/SCP"
 
 inputs:
   host:
-    description: "EC2 Host"
+    description: "EC2 Public IP"
     required: true
   user:
-    description: "EC2 User"
+    description: "EC2 Username (ubuntu or ec2-user)"
     required: true
   ssh_key:
-    description: "SSH Private Key"
+    description: "Private SSH Key (.pem content)"
     required: true
 
 runs:
   using: "composite"
   steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
-
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: maven
-
     - name: Build with Maven
+      shell: bash
       run: mvn clean package -DskipTests
 
-    - name: Deploy to EC2 via SSH
-      uses: appleboy/scp-action@v0.1.7
-      with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ${{ secrets.EC2_USERNAME }}
-        key: ${{ secrets.EC2_SSH_KEY }}
-        source: "target/*.jar"
-        target: "/home/${{ secrets.EC2_USERNAME }}/app"
-        strip_components: 1
+    - name: Setup SSH Key
+      shell: bash
+      run: |
+        mkdir -p ~/.ssh
+        # Using a quoted EOF to prevent the shell from mangling the SSH key format
+        cat <<'EOF' > ~/.ssh/id_rsa
+        ${{ inputs.ssh_key }}
+        EOF
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ inputs.host }} >> ~/.ssh/known_hosts
+
+    - name: Copy JAR to EC2
+      shell: bash
+      run: |
+        # Moving the jar to the app folder on EC2
+        scp -i ~/.ssh/id_rsa target/*.jar ${{ inputs.user }}@${{ inputs.host }}:/home/${{ inputs.user }}/
 
     - name: Restart Application
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ${{ secrets.EC2_USERNAME }}
-        key: ${{ secrets.EC2_SSH_KEY }}
-        script: |
-          # Kill the old process running on 8080
+      shell: bash
+      run: |
+        ssh -i ~/.ssh/id_rsa ${{ inputs.user }}@${{ inputs.host }} << 'EOF'
+          # Kill process on 8080 if it exists
           sudo fuser -k 8080/tcp || true
-          # Run the new JAR in the background
-          nohup java -jar /home/${{ secrets.EC2_USERNAME }}/app/*.jar > app.log 2>&1 &
-          # Kill old process if it exists
-          sudo fuser -k 8080/tcp || true
-          cd /home/${{ inputs.user }}
           # Run the new jar
+          cd /home/${{ inputs.user }}
           nohup java -jar *.jar > app.log 2>&1 &
         EOF
