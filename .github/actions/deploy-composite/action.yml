@@ -23,10 +23,12 @@ runs:
       shell: bash
       run: |
         mkdir -p ~/.ssh
-        # Use printf to preserve newlines and avoid libcrypto errors
-        printf "%s\n" "${{ inputs.ssh_key }}" > ~/.ssh/id_rsa
+        # Use a quoted Here-Doc to preserve the exact format of the key
+        cat <<'EOF' > ~/.ssh/id_rsa
+        ${{ inputs.ssh_key }}
+        EOF
+        
         chmod 600 ~/.ssh/id_rsa
-        # Add host to known_hosts to prevent interactive prompt
         ssh-keyscan -H ${{ inputs.host }} >> ~/.ssh/known_hosts
 
     - name: Copy JAR to EC2
