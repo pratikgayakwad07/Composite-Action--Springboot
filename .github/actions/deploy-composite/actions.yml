@@ -2,42 +2,44 @@ name: "Deploy Spring Boot to EC2"
 description: "Build and deploy Spring Boot app to AWS EC2"
 
 inputs:
-host:
-description: "EC2 Host"
-required: true
-user:
-description: "EC2 User"
-required: true
-ssh_key:
-description: "SSH Private Key"
-required: true
+  host:
+    description: "EC2 Host"
+    required: true
+  user:
+    description: "EC2 User"
+    required: true
+  ssh_key:
+    description: "SSH Private Key"
+    required: true
 
 runs:
-using: "composite"
-steps:
+  using: "composite"
+  steps:
+    - name: Build with Maven
+      run: mvn clean package -DskipTests
+      shell: bash
 
-```
-- name: Build with Maven
-  run: mvn clean package -DskipTests
-  shell: bash
+    - name: Setup SSH Key
+      shell: bash
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ inputs.ssh_key }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ inputs.host }} >> ~/.ssh/known_hosts
 
-- name: Copy JAR to EC2
-  uses: appleboy/scp-action@v0.1.7
-  with:
-    host: ${{ inputs.host }}
-    username: ${{ inputs.user }}
-    key: ${{ inputs.ssh_key }}
-    source: target/*.jar
-    target: /home/${{ inputs.user }}/app
-    strip_components: 1
+    - name: Copy JAR to EC2
+      shell: bash
+      run: |
+        # Using native scp since composite actions can't easily wrap Docker actions
+        scp -i ~/.ssh/id_rsa target/*.jar ${{ inputs.user }}@${{ inputs.host }}:/home/${{ inputs.user }}/
 
-- name: Restart App on EC2
-  uses: appleboy/ssh-action@v1.0.3
-  with:
-    host: ${{ inputs.host }}
-    username: ${{ inputs.user }}
-    key: ${{ inputs.ssh_key }}
-    script: |
-#      sudo fuser -k 8080/tcp || true
-      nohup java -jar /home/${{ inputs.user }}/app/*.jar > app.log 2>&1 &
-```
+    - name: Restart App on EC2
+      shell: bash
+      run: |
+        ssh -i ~/.ssh/id_rsa ${{ inputs.user }}@${{ inputs.host }} << 'EOF'
+          # Kill existing process on 8080
+          sudo fuser -k 8080/tcp || true
+          # Navigate to home and run
+          cd /home/${{ inputs.user }}
+          nohup java -jar *.jar > app.log 2>&1 &
+        EOF
