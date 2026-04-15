@@ -38,6 +38,6 @@ steps:
     username: ${{ inputs.user }}
     key: ${{ inputs.ssh_key }}
     script: |
-      sudo fuser -k 8080/tcp || true
+#      sudo fuser -k 8080/tcp || true
       nohup java -jar /home/${{ inputs.user }}/app/*.jar > app.log 2>&1 &
 ```
