@@ -21,12 +21,12 @@ runs:
 
     - name: Setup SSH Key
       shell: bash
+      env:
+        SSH_KEY_DATA: ${{ inputs.ssh_key }}
       run: |
         mkdir -p ~/.ssh
-        # Using a quoted EOF to prevent the shell from mangling the SSH key format
-        cat <<'EOF' > ~/.ssh/id_rsa
-        ${{ inputs.ssh_key }}
-        EOF
+        # Using the ENV variable preserves the exact formatting of the key
+        echo "$SSH_KEY_DATA" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H ${{ inputs.host }} >> ~/.ssh/known_hosts
 
